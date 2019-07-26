@@ -1,10 +1,22 @@
 package interactivity
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"net/http"
 
 	"github.com/geckoboard/slackutil-go/messaging"
+)
+
+var slackClient = http.Client{}
+
+const (
+	// The response should be visible to everyone in the channel
+	ResponseInChannel = "in_channel"
+	// The response should only be visible to the user who typed the command
+	ResponseEphemeral = "ephemeral"
 )
 
 type Request struct {
@@ -42,6 +54,54 @@ type StaticSelectAction struct {
 
 type MessageResponder struct {
 	r Request
+}
+
+func (m MessageResponder) EphemeralResponse(resp messaging.CommonPayload) {
+	payload := struct {
+		ResponseType string `json:"response_type"`
+		messaging.CommonPayload
+	}{ResponseEphemeral, resp}
+
+	b, err := json.Marshal(&payload)
+	if err != nil {
+		panic(err)
+	}
+
+	r, err := http.NewRequest("POST", m.r.ResponseURL, bytes.NewReader(b))
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = slackClient.Do(r)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (m MessageResponder) PublicResponse(resp messaging.CommonPayload) {
+	payload := struct {
+		ResponseType string `json:"response_type"`
+		messaging.CommonPayload
+	}{ResponseInChannel, resp}
+
+	d, _ := json.MarshalIndent(payload, "", "  ")
+	fmt.Println(string(d))
+	b, err := json.Marshal(&payload)
+	if err != nil {
+		panic(err)
+	}
+
+	r, err := http.NewRequest("POST", m.r.ResponseURL, bytes.NewReader(b))
+	if err != nil {
+		panic(err)
+	}
+
+	apiResp, err := slackClient.Do(r)
+	if err != nil {
+		panic(err)
+	}
+
+	ioutil.ReadAll(apiResp.Body)
 }
 
 func Handler(with func(Request, MessageResponder)) http.HandlerFunc {
